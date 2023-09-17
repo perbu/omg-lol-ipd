@@ -1,0 +1,15 @@
+[Unit]
+Description=OMG LOL IP Daemon
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/omg-lol-ipd
+Restart=always
+User=daemon
+Group=daemon
+Environment=PATH=/usr/bin:/usr/local/bin
+WorkingDirectory=/usr/local/etc/lol
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target
