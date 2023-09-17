@@ -15,42 +15,39 @@ func Monitor(ctx context.Context, c config.Config) error {
 	if err != nil {
 		return fmt.Errorf("ip.ExternalIpV4: %w", err)
 	}
-	slog.Info("ExternalIpV4", "externalAddr", externalAddr)
 	client, err := getClient(c)
 	if err != nil {
 		return fmt.Errorf("getClient: %w", err)
 	}
-	lolAddr, err := getLolAddr(client, c.Username)
+	id, existing, err := getLolIdName(client, c.Username, c.Hostname)
 	if err != nil {
 		return fmt.Errorf("getLolAddr: %w", err)
 	}
-	if lolAddr.Data != externalAddr {
-		slog.Info("lolAddr != externalAddr", "lolAddr", lolAddr, "externalAddr", externalAddr)
-		newlol, err := updateLolAddr(client, lolAddr, externalAddr, c.Username)
+	if existing != externalAddr {
+		err := updateLolAddr(client, id, c.Hostname, externalAddr, c.Username)
 		if err != nil {
-			return fmt.Errorf("setLolAddr: %w", err)
+			return fmt.Errorf("updateLolAddr: %w", err)
 		}
-		lolAddr = *newlol
+		slog.Info("Updated DNS record", "hostname", c.Hostname, "username", c.Username, "externalAddr", externalAddr)
 	}
-	slog.Info("Starting monitor")
 	refreshTicker := time.NewTicker(30 * time.Minute)
 	for {
+
 		select {
 		case <-refreshTicker.C:
 			newAddr, err := ip.ExternalIpV4()
 			if err != nil {
-				slog.Info("ip.ExternalIpV4 returned an error", "error", err)
+				slog.Warn("ip.ExternalIpV4 returned an error", "error", err)
 				continue
 			}
 			if newAddr != externalAddr {
-				slog.Info("ExternalIpV4", "externalAddr", newAddr)
-				newlol, err := updateLolAddr(client, lolAddr, newAddr, c.Username)
+				slog.Info("Updating DNS record", "hostname", c.Hostname, "username", c.Username, "externalAddr", newAddr)
+				err := updateLolAddr(client, id, c.Hostname, newAddr, c.Username)
 				if err != nil {
-					slog.Info("setLolAddr returned an error", "error", err)
+					slog.Warn("updateLolAddr failed", "error", err)
 					continue
 				}
 				externalAddr = newAddr
-				lolAddr = *newlol
 			}
 		case <-ctx.Done():
 			return nil
@@ -64,36 +61,37 @@ func getClient(c config.Config) (*omglol.Client, error) {
 }
 
 // updateLolAddr updates the DNS record for the given domain with the new name.
-// it creates an omglol.DNSEntry from the given omglol.DNSRecord and calls
-// omglol.Client.UpdateDNSRecord.
-func updateLolAddr(c *omglol.Client, record omglol.DNSRecord, newName, domain string) (*omglol.DNSRecord, error) {
+func updateLolAddr(c *omglol.Client, id int64, hostname, addr, domain string) error {
+	recType := "A"
+	ttl := int64(300)
 	entry := omglol.DNSEntry{
-		Type: &record.Type,
-		Name: &record.Name,
-		Data: &newName,
-		TTL:  &record.TTL,
+		Type: &recType,
+		Name: &hostname,
+		Data: &addr,
+		TTL:  &ttl,
 	}
-	rec, err := c.UpdateDNSRecord(domain, entry, record.ID)
+	_, err := c.UpdateDNSRecord(domain, entry, id)
 	if err != nil {
-		return nil, fmt.Errorf("c.UpdateDNSRecord: %w", err)
+		return fmt.Errorf("c.UpdateDNSRecord: %w", err)
 	}
-	return rec, nil
+	return nil
 
 }
 
-func getLolAddr(c *omglol.Client, hostname string) (omglol.DNSRecord, error) {
-	null := omglol.DNSRecord{}
-	addrs, err := c.ListDNSRecords(hostname)
+func getLolIdName(c *omglol.Client, username, hostname string) (int64, string, error) {
+	desired := fmt.Sprintf("%s.%s", hostname, username)
+	addrs, err := c.ListDNSRecords(username)
 	if err != nil {
-		return null, fmt.Errorf("c.ListDNSRecords: %w", err)
+		return 0, "", fmt.Errorf("c.ListDNSRecords: %w", err)
 	}
 	if len(*addrs) == 0 {
-		return null, fmt.Errorf("no addresses found")
+		return 0, "", fmt.Errorf("no addresses found")
 	}
 	for _, addr := range *addrs {
-		if addr.Type == "A" {
-			return addr, nil
+		if addr.Type == "A" && addr.Name == desired {
+			return addr.ID, addr.Data, nil
+
 		}
 	}
-	return null, fmt.Errorf("no A record found")
+	return 0, "", fmt.Errorf("no A record found for'%s'", desired)
 }

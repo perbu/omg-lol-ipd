@@ -11,7 +11,6 @@ type Config struct {
 	Username string `json:"username"`
 	ApiKey   string `json:"api_key"`
 	Hostname string `json:"hostname"`
-	Domain   string `json:"domain"`
 }
 
 func Load(file string) (Config, error) {
