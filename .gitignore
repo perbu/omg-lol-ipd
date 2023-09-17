@@ -26,3 +26,6 @@ go.work
 
 # bin folder
 /bin
+
+# config, might contains API keys:
+/config.json
