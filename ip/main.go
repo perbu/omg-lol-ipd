@@ -3,7 +3,6 @@ package ip
 import (
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
 	"time"
 )
@@ -34,27 +33,4 @@ func ExternalIpV4() (string, error) {
 		return "", fmt.Errorf("json.NewDecoder.Decode: %w", err)
 	}
 	return httpBinResponse.Origin, nil
-}
-
-func IpV6() {
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	for _, addr := range addrs {
-		ipnet, ok := addr.(*net.IPNet)
-		if !ok {
-			continue
-		}
-		// make sure it is a ipv6 address:
-
-		ip := ipnet.IP
-		if ip.To4() != nil {
-			continue
-		}
-		if !ip.IsGlobalUnicast() {
-			continue
-		}
-	}
 }
